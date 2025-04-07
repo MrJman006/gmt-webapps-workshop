@@ -1,70 +1,77 @@
 #! /usr/bin/env bash
 
-THIS_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+##  
+##  MANUAL PAGE
+##      @{THIS_SCRIPT_NAME}
+##  
+##  USAGE
+##      @{THIS_SCRIPT_NAME} [options]
+##  
+##  DESCRIPTION
+##      Deploys the frontend site.
+##  
+##  OPTIONS
+##      -h|--help
+##          Show this manual page.
+##  
+##  END
+##      
 
-THIS_SCRIPT_DIR_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+set -o errexit
+set -o errtrace
+set -o nounset
+set -o pipefail
 
-PROJECT_DIR_PATH="$(cd "${THIS_SCRIPT_DIR_PATH}/.." && pwd -P)"
+readonly THIS_SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+readonly THIS_SCRIPT_DIR_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly LIVE_DOMAIN_URL="https://mrjman006.github.io/gmt-webapps-workshop"
 
-MANUAL_PAGE_TEMPLATE="$(cat <<'EOF'
-    MANUAL_PAGE
-        @{SCRIPT_NAME}
-
-    USAGE
-        @{SCRIPT_NAME}
-
-    DESCRIPTION
-        Build the frontend site.
-
-    END
-EOF
-)"
-
-fn_print_manual_page()
+function show_manual_page()
 {
-    #
-    # Instantiate the template.
-    #
-
-    local TEMP_FILE="$(mktemp --tmpdir="/dev/shm")"
-
-    echo "${MANUAL_PAGE_TEMPLATE}" > "${TEMP_FILE}"
-
-    # Remove leading spaces.
-    sed -ri "s/^\s{4}//" "${TEMP_FILE}"
-
-    sed -ri "s/@\{SCRIPT_NAME\}/${THIS_SCRIPT_NAME}/g" "${TEMP_FILE}"
-
-    #
-    # Print to console.
-    #
-
-    cat "${TEMP_FILE}"
-
-    #
-    # Clean up.
-    #
-
-    rm "${TEMP_FILE}"
+    grep -E "^##  " "${THIS_SCRIPT_DIR_PATH}/${THIS_SCRIPT_NAME}" |
+        sed -E "s/^##  //" |
+        sed -E "s/@\{THIS_SCRIPT_NAME\}/${THIS_SCRIPT_NAME}/g"
 }
 
-fn_parse_cli()
+function parse_cli()
 {
-    echo "$@" | grep -Pq "(^|\s+)(-h|--help)(\s+|$)"
-    RESULT=$?
+    #
+    # Parse options.
+    #
 
-    if [ ${RESULT} -eq 0 ]
+    if $(echo "$@" | grep -Eq "(^|\s)(-h|--help)(\s|$)")
     then
-        fn_print_manual_page
-        return 1
+        show_manual_page
+        exit 1
     fi
+
+    while [ $# -gt 0 ]
+    do
+        local token="${1}"
+
+        case "${token}" in
+            --)
+                shift
+                break
+                ;;
+            -?)
+                echo "Invalid option '${token}'. Need --help?"
+                exit 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 }
 
-fn_main()
+function main()
 {
-    cd "${PROJECT_DIR_PATH}"
+    cd "${THIS_SCRIPT_DIR_PATH}"/..
 
-    rsync -ai frontend/ _frontend
+    mkdir -p _frontend
+    cp -r frontend/. _frontend
 }
 
-fn_parse_cli "$@" && fn_main
+parse_cli "$@"
+main
