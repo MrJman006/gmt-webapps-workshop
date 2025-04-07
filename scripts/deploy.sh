@@ -68,22 +68,59 @@ function parse_cli()
 
 function check_for_uncommited_changes()
 {
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    echo "-- Checking for uncommited changes."
+
     if $(git status | grep -Pq "Changes not staged for commit")
     then
         echo "Error: The repo has non-commited changes. Either discard them or stash them before attempting to deploy."
         return 1
     fi
+
+    popd 1>/dev/null
+}
+
+function create_stage()
+{
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    if [[ -e _stage ]]
+    then
+        echo "-- Removing old stage."
+
+        rm -rf _stage
+    fi
+
+    mkdir -p _stage
+
+
+    popd 1>/dev/null
+}
+
+function stage_deployment_meta_data()
+{
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    echo "<div>Deployed on: $(date "+%Y-%m-%d %H:%M:%S")</div>" >> _stage/index.html
+    echo "<div>Deployed at commit: $(git rev-parse --short HEAD)</div>" >> _stage/index.html
+    echo "<br>" >> _stage/index.html
+
+    popd 1>/dev/null
 }
 
 function stage_all_lessons()
 {
-set -x
-    mkdir -p _stage
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    echo "-- Staging all lessons."
 
     local LESSON_DIR_PATH
     for LESSON_DIR_PATH in $(find -maxdepth 1 -name "lesson-*" | sort)
     do
         local LESSON_NAME="$(basename "${LESSON_DIR_PATH}")"
+
+        echo "  -- Staging '${LESSON_NAME}'."
     
         #
         # Stage the lesson site files.
@@ -112,102 +149,78 @@ set -x
     
         echo "<a href=\"${LESSON_NAME}\">${LESSON_NAME}</a><br>" >> _stage/index.html
     done
-set +x
+
+    popd 1>/dev/null
 }
 
-#function stageLatestLessonSite()
-#{
-#    local LATEST_LESSON_PATH="$(find . -maxdepth 1 -name "lesson-*" | sort | tail -n 1)"
-# 
-#    #
-#    # Stage the lesson site files.
-#    #
-#   
-#    if [ -e "${LATEST_LESSON_PATH}/frontend" ]
-#    then
-#        rsync -ai "${LATEST_LESSON_PATH}/_frontend/" _stage/latest
-#    else
-#        rsync -ai "${LATEST_LESSON_PATH}/" _stage/latest
-#    fi
-#
-#    #
-#    # Remove unnecessary files.
-#    #
-#
-#    local FILE_LIST=()
-#
-#    FILE_LIST+=("_stage/latest/README.md")
-#    FILE_LIST+=("_stage/latest/package.json")
-#
-#    local FILE
-#    for FILE in "${FILE_LIST[@]}"
-#    do
-#        [ -e "${FILE}" ] && rm "${FILE}"
-#    done
-#
-#    #
-#    # Change localhost links.
-#    #
-#    
-#    find "_stage/latest" -type f -exec sed -ri "s|http://127.0.0.1:9999|https://mrjman006.github.io/gmt-webapps-workshop/latest|g" {} \;
-#    
-#    #
-#    # Add a link for the lesson site to the root index.
-#    #
-#    
-#    echo "<a href=\"latest\">latest</a><br>" >> "_stage/index.html"
-#}
-#
-#function deployStagedSites()
-#{
-#    #
-#    # GitHub Pages are automatically deployed for files in a remote branch
-#    # called 'gh-pages'. So we need to add just the staged site files to the
-#    # named branch and GitHub will take care of the rest.
-#
-#    #
-#    # Commit the staging directory so we can add the staged files to the
-#    # 'gh-pages' remote branch. Save the previous HEAD state so we can remove
-#    # the staging commit from the history when we are done.
-#    #
-#    
-#    local ORIGINAL_HEAD="$(git rev-parse --short HEAD)"
-#    git add --force _stage
-#    git commit -m "Deploying staged lesson sites." 
-#  
-#    # 
-#    # Remove old versions of the 'gh-pages' remote branch. 
-#    #
-#
-#    git push -d origin gh-pages
-#
-#    #
-#    # Push just the contents of the staging directory to the 'gh-pages' remote
-#    # branch.
-#    #
-#
-#    git subtree push --prefix _stage origin gh-pages
-#    
-#    #
-#    # Now that the staged files are deployed, we can restore the git repo
-#    # to it's original state.
-#    #
-#    
-#    git reset --hard "${ORIGINAL_HEAD}"
-#}
+function stage_latest_lesson()
+{
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    echo "-- Staging the latest lesson."
+
+    local LATEST_LESSON_PATH="$(find _stage -maxdepth 1 -name "lesson-*" | sort | tail -n 1)"
+
+    cp -r ${LATEST_LESSON_PATH} _stage/latest
+ 
+    #
+    # Add a link for the lesson site to the root index.
+    #
+    
+    echo "<a href=\"latest\">latest</a><br>" >> _stage/index.html
+
+    popd 1>/dev/null
+}
+
+function deploy_staged_lessons()
+{
+    pushd "${THIS_SCRIPT_DIR_PATH}"/.. 1>/dev/null
+
+    echo "-- Deploying staged files."
+
+    # GitHub Pages are automatically deployed for files in a remote branch
+    # called 'gh-pages'. So we need to add just the staged site files to the
+    # named branch and GitHub will take care of the rest.
+  
+    # 
+    # Remove old versions of the 'gh-pages' remote branch. 
+    #
+
+    git push -d origin gh-pages
+
+    #
+    # Commit the staged files so we can add them to the 'gh-pages' remote branch.
+    #
+    
+    git add --force _stage
+    git commit -m "TEMP COMMIT: Deploying staged lesson sites."
+
+    #
+    # Push just the contents of the staged files to the 'gh-pages' remote branch.
+    #
+
+    git subtree push --prefix _stage origin gh-pages
+    
+    #
+    # Now that the staged files are deployed, we can restore the git repo
+    # to it's original state.
+    #
+    
+    git reset --hard HEAD~1
+
+    popd 1>/dev/null
+}
 
 function main()
 {
     :
 
     check_for_uncommited_changes
+    create_stage
+    stage_deployment_meta_data
     stage_all_lessons
-
-    #stageLessonSites || return $?
-   
-    #stageLatestLessonSite || return $?
-
-    #deployStagedSites || return $?
+    stage_latest_lesson
+    deploy_staged_lessons
 }
 
 parse_cli "$@"
